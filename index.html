@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>Continuous Employment CV Builder</title>
+  <title>Continuous Employment CV Builder - Intelligent</title>
   <script src="https://cdn.tailwindcss.com"></script>
   <style>
     .hidden { display: none; }
@@ -12,12 +12,19 @@
       display: flex; align-items: center; justify-content: center;
       z-index: 1000; padding: 1rem;
     }
+    .ai-suggestion {
+      animation: fadeIn 0.3s ease-in;
+    }
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(-10px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
   </style>
 </head>
 <body class="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100">
   <div class="max-w-4xl mx-auto bg-white rounded-lg shadow-xl p-8 my-6">
-    <h1 class="text-3xl font-bold text-blue-900 mb-2">Continuous Employment CV Builder</h1>
-    <p class="text-gray-600 mb-8">Track your complete work history from age 16 with no gaps</p>
+    <h1 class="text-3xl font-bold text-blue-900 mb-2">🤖 Intelligent CV Builder</h1>
+    <p class="text-gray-600 mb-8">AI-powered continuous employment tracking from age 16 with no gaps</p>
 
     <!-- Personal Information Section -->
     <div class="mb-8 p-6 bg-blue-50 rounded-lg">
@@ -56,7 +63,7 @@
         <div class="flex-1">
           <h3 class="font-semibold text-red-900 mb-2">Employment Gaps Detected</h3>
           <div id="gapList"></div>
-          <p class="text-red-700 text-sm mt-2">Please add entries to cover these periods or use our smart suggestions</p>
+          <p class="text-red-700 text-sm mt-2">Please add entries to cover these periods or use our smart AI suggestions</p>
         </div>
       </div>
     </div>
@@ -118,7 +125,7 @@
         Share CV
       </button>
       <button id="checkGapsBtn" class="flex items-center gap-2 bg-blue-600 text-white px-6 py-3 rounded-lg hover:bg-blue-700 transition font-semibold">
-        Check for Gaps
+        🤖 AI Gap Check
       </button>
     </div>
 
@@ -138,7 +145,7 @@
       entries: [],
       gaps: [],
       customTypes: [],
-      unsavedEntryId: null  // CRITICAL: Only set this when actually editing an employment entry!
+      unsavedEntryId: null
     };
 
     const defaultTypes = [
@@ -147,58 +154,145 @@
       'career break','parental leave','sabbatical','freelancing'
     ];
 
+    // -------------------- Intelligent Label System --------------------
+    function getIntelligentLabels(type) {
+      const labels = {
+        education: {
+          title: 'Course / Qualification',
+          company: 'Institution',
+          description: 'Description of course, achievements, grades, etc.',
+          icon: '🎓'
+        },
+        employment: {
+          title: 'Job Title',
+          company: 'Company',
+          description: 'Description of responsibilities, achievements, etc.',
+          icon: '💼'
+        },
+        'self-employed': {
+          title: 'Business / Role',
+          company: 'Business Name',
+          description: 'Description of business activities, clients, achievements...',
+          icon: '🚀'
+        },
+        freelancing: {
+          title: 'Freelance Role',
+          company: 'Client / Platform',
+          description: 'Description of freelance work, projects, clients...',
+          icon: '💻'
+        },
+        volunteer: {
+          title: 'Volunteer Role',
+          company: 'Organization',
+          description: 'Description of volunteer activities and contributions...',
+          icon: '❤️'
+        },
+        'gap year': {
+          title: 'Gap Year Activity',
+          company: 'Location / Organization',
+          description: 'What you did during your gap year...',
+          icon: '🌍'
+        },
+        travel: {
+          title: 'Travel Purpose',
+          company: 'Destinations',
+          description: 'Travel experiences, locations visited, activities...',
+          icon: '✈️'
+        },
+        unemployment: {
+          title: 'Status',
+          company: 'N/A',
+          description: 'Activities during unemployment (job search, skills development, etc.)',
+          icon: '⏸️'
+        },
+        'job seeking': {
+          title: 'Job Search Activity',
+          company: 'N/A',
+          description: 'Job search efforts, interviews, networking, etc.',
+          icon: '🔍'
+        },
+        'career break': {
+          title: 'Reason for Break',
+          company: 'N/A',
+          description: 'What you did during your career break...',
+          icon: '☕'
+        },
+        'parental leave': {
+          title: 'Parental Leave',
+          company: 'N/A',
+          description: 'Parental responsibilities and activities...',
+          icon: '👶'
+        },
+        sabbatical: {
+          title: 'Sabbatical Purpose',
+          company: 'Location / Activity',
+          description: 'What you did during your sabbatical...',
+          icon: '🧘'
+        }
+      };
+
+      return labels[type] || labels.employment;
+    }
+
+    // -------------------- AI Smart Suggestions --------------------
+    function getAISuggestions(type) {
+      const suggestions = {
+        education: {
+          titles: ['Bachelor\'s Degree', 'Master\'s Degree', 'PhD', 'A-Levels', 'GCSEs', 'Diploma', 'Certificate Course'],
+          companies: ['University Name', 'College Name', 'School Name', 'Online Platform']
+        },
+        employment: {
+          titles: ['Software Engineer', 'Marketing Manager', 'Sales Associate', 'Project Manager', 'Data Analyst'],
+          companies: ['Company Name', 'Organization Name']
+        },
+        'self-employed': {
+          titles: ['Consultant', 'Freelancer', 'Business Owner', 'Contractor'],
+          companies: ['My Business', 'Independent']
+        }
+      };
+
+      return suggestions[type] || suggestions.employment;
+    }
+
     // -------------------- Personal Information --------------------
     function setupPersonalInfo(){
-      // Simple input handlers - NO unsavedEntryId manipulation here!
       ['fullName','email','phone','address','postcode'].forEach(id=>{
         const el=document.getElementById(id);
         el.value=state.personalInfo[id]||'';
         el.addEventListener('input', ()=>{ 
           state.personalInfo[id]=el.value;
-          // Don't call renderEntries or anything that might interfere with entry management
         });
       });
 
-      // Date of Birth handler - completely isolated from entry management
       const dob=document.getElementById('dateOfBirth');
       dob.value=state.personalInfo.dateOfBirth||'';
       dob.addEventListener('change', function(){
-        // Store the value
         state.personalInfo.dateOfBirth=this.value;
         
-        // If empty, hide info and return
         if(!this.value){ 
           document.getElementById('ageInfo').classList.add('hidden');
           document.getElementById('firstEntryHelp').classList.add('hidden');
           return; 
         }
         
-        // Calculate age
         const birthDate=new Date(this.value);
         const today=new Date();
         let age=today.getFullYear()-birthDate.getFullYear();
         const m=today.getMonth()-birthDate.getMonth();
         if(m<0||(m===0&&today.getDate()<birthDate.getDate())) age--;
         
-        // Calculate 16th birthday
         const age16=new Date(birthDate);
         age16.setFullYear(birthDate.getFullYear()+16);
         const age16Str=age16.toISOString().split('T')[0];
         
-        // Update state
         state.personalInfo.currentAge=age;
         state.personalInfo.age16Date=age16Str;
         
-        // Update UI
         document.getElementById('currentAge').textContent=age;
         document.getElementById('age16Date').textContent=age16Str;
         document.getElementById('startDate').textContent=age16Str;
         document.getElementById('ageInfo').classList.remove('hidden');
         document.getElementById('firstEntryHelp').classList.remove('hidden');
-        
-        // IMPORTANT: Do NOT set unsavedEntryId here!
-        // IMPORTANT: Do NOT call renderEntries here!
-        // This is just personal info, not an employment entry
       });
     }
 
@@ -212,40 +306,105 @@
 
     // -------------------- Entry Management --------------------
     function renderEntries(){
-      const container=document.getElementById('employmentEntries');
-      const sorted=[...state.entries].sort((a,b)=> new Date(b.startDate)-new Date(a.startDate));
+      const employmentContainer=document.getElementById('employmentEntries');
+      const educationContainer=document.getElementById('educationEntries');
+      const educationSection=document.getElementById('educationSection');
+      
+      const employmentEntries=state.entries.filter(e=> e.type!=='education');
+      const educationEntries=state.entries.filter(e=> e.type==='education');
+      
+      const sorted=employmentEntries.sort((a,b)=> new Date(b.startDate)-new Date(a.startDate));
       
       if(sorted.length===0){
-        container.innerHTML='<p class="text-gray-500 text-center py-8">No entries yet. Click "Add Entry" to begin.</p>';
-        return;
+        employmentContainer.innerHTML='<p class="text-gray-500 text-center py-8">No entries yet. Click "Add Entry" to begin.</p>';
+      } else {
+        employmentContainer.innerHTML=sorted.map(entry=>{
+          const endDisplay=entry.isCurrent ? 'Present' : entry.endDate;
+          const isNewClass=entry.isNew ? 'border-4 border-blue-400 shadow-lg' : '';
+          const labels = getIntelligentLabels(entry.type);
+          return `
+            <div class="mb-4 p-4 border border-gray-200 rounded-lg ${isNewClass}" data-entry-id="${entry.id}">
+              <div class="flex justify-between items-start mb-2">
+                <div>
+                  <h3 class="font-semibold text-lg text-gray-900">${labels.icon} ${entry.title}</h3>
+                  <p class="text-gray-600 capitalize">${entry.type}${entry.company ? ' at '+entry.company : ''}</p>
+                  ${entry.location ? `<p class="text-sm text-gray-500">📍 ${entry.location}</p>` : ''}
+                </div>
+                <div class="flex gap-2">
+                  <button onclick="editEntry(${entry.id})" class="text-blue-600 hover:text-blue-800 text-sm font-medium">Edit</button>
+                  <button onclick="deleteEntry(${entry.id})" class="text-red-600 hover:text-red-800 text-sm font-medium">Delete</button>
+                </div>
+              </div>
+              <p class="text-sm text-gray-600 mb-2">📅 ${entry.startDate} → ${endDisplay}</p>
+              ${entry.description ? `<p class="text-gray-700 text-sm">${entry.description}</p>` : ''}
+            </div>`;
+        }).join('');
       }
-      
-      container.innerHTML=sorted.map(entry=>{
-        const endDisplay=entry.isCurrent ? 'Present' : entry.endDate;
-        const isNewClass=entry.isNew ? 'border-4 border-blue-400 shadow-lg' : '';
-        return `
-          <div class="mb-4 p-4 border border-gray-200 rounded-lg ${isNewClass}" data-entry-id="${entry.id}">
-            <div class="flex justify-between items-start mb-2">
-              <div>
-                <h3 class="font-semibold text-lg text-gray-900">${entry.title}</h3>
-                <p class="text-gray-600 capitalize">${entry.type}${entry.company ? ' at '+entry.company : ''}</p>
-                ${entry.location ? `<p class="text-sm text-gray-500">${entry.location}</p>` : ''}
+
+      // Render education entries
+      if(educationEntries.length>0){
+        educationSection.classList.remove('hidden');
+        const sortedEdu=educationEntries.sort((a,b)=> new Date(b.startDate)-new Date(a.startDate));
+        educationContainer.innerHTML=sortedEdu.map(entry=>{
+          const endDisplay=entry.isCurrent ? 'Present' : entry.endDate;
+          const isNewClass=entry.isNew ? 'border-4 border-blue-400 shadow-lg' : '';
+          return `
+            <div class="mb-4 p-4 border border-gray-200 rounded-lg ${isNewClass}" data-entry-id="${entry.id}">
+              <div class="flex justify-between items-start mb-2">
+                <div>
+                  <h3 class="font-semibold text-lg text-gray-900">🎓 ${entry.title}</h3>
+                  <p class="text-gray-600">${entry.company}</p>
+                  ${entry.location ? `<p class="text-sm text-gray-500">📍 ${entry.location}</p>` : ''}
+                </div>
+                <div class="flex gap-2">
+                  <button onclick="editEntry(${entry.id})" class="text-blue-600 hover:text-blue-800 text-sm font-medium">Edit</button>
+                  <button onclick="deleteEntry(${entry.id})" class="text-red-600 hover:text-red-800 text-sm font-medium">Delete</button>
+                </div>
               </div>
-              <div class="flex gap-2">
-                <button onclick="editEntry(${entry.id})" class="text-blue-600 hover:text-blue-800 text-sm font-medium">Edit</button>
-                <button onclick="deleteEntry(${entry.id})" class="text-red-600 hover:text-red-800 text-sm font-medium">Delete</button>
-              </div>
-            </div>
-            <p class="text-sm text-gray-600 mb-2">${entry.startDate} → ${endDisplay}</p>
-            ${entry.description ? `<p class="text-gray-700 text-sm">${entry.description}</p>` : ''}
-          </div>`;
-      }).join('');
+              <p class="text-sm text-gray-600 mb-2">📅 ${entry.startDate} → ${endDisplay}</p>
+              ${entry.description ? `<p class="text-gray-700 text-sm">${entry.description}</p>` : ''}
+            </div>`;
+        }).join('');
+      } else {
+        educationSection.classList.add('hidden');
+      }
+    }
+
+    // Update labels dynamically when type changes
+    function updateFormLabels(modalId) {
+      const typeSelect = document.getElementById(modalId === 'entry' ? 'entryType' : 'editType');
+      if(!typeSelect) return;
+
+      const updateLabels = () => {
+        const selectedType = typeSelect.value;
+        const labels = getIntelligentLabels(selectedType);
+        
+        const titleLabel = document.getElementById(modalId === 'entry' ? 'entryTitleLabel' : 'editTitleLabel');
+        const companyLabel = document.getElementById(modalId === 'entry' ? 'entryCompanyLabel' : 'editCompanyLabel');
+        const descLabel = document.getElementById(modalId === 'entry' ? 'entryDescLabel' : 'editDescLabel');
+        const titleInput = document.getElementById(modalId === 'entry' ? 'entryTitle' : 'editTitle');
+        const companyInput = document.getElementById(modalId === 'entry' ? 'entryCompany' : 'editCompany');
+        const descInput = document.getElementById(modalId === 'entry' ? 'entryDescription' : 'editDescription');
+        
+        if(titleLabel) titleLabel.textContent = labels.title + ' *';
+        if(companyLabel) companyLabel.textContent = labels.company;
+        if(descLabel) descLabel.textContent = 'Description';
+        if(titleInput) titleInput.placeholder = labels.title;
+        if(companyInput) companyInput.placeholder = labels.company;
+        if(descInput) descInput.placeholder = labels.description;
+
+        // Show AI suggestion badge
+        const suggestionBadge = document.getElementById(modalId === 'entry' ? 'aiSuggestion' : 'aiSuggestionEdit');
+        if(suggestionBadge) {
+          suggestionBadge.innerHTML = `<span class="ai-suggestion text-xs bg-gradient-to-r from-purple-500 to-pink-500 text-white px-2 py-1 rounded-full">${labels.icon} Smart Mode Active</span>`;
+        }
+      };
+
+      typeSelect.addEventListener('change', updateLabels);
+      updateLabels(); // Initial call
     }
 
     function addNewEntry(){
-      console.log('addNewEntry called, unsavedEntryId:', state.unsavedEntryId);
-      
-      // Check if personal info is complete
       const requiredFields=['fullName','email','phone','address','postcode','dateOfBirth'];
       const missingFields=requiredFields.filter(f=> !state.personalInfo[f]);
       
@@ -254,20 +413,20 @@
         return;
       }
 
-      // CRITICAL CHECK: If there's already an unsaved entry, prevent adding another
       if(state.unsavedEntryId){
-        console.log('Blocked: unsavedEntryId exists:', state.unsavedEntryId);
         alert('Please save or cancel your current entry before adding a new one');
         return;
       }
 
-      console.log('Creating new entry modal');
       const newId=Date.now();
       const modal=document.createElement('div');
       modal.className='modal-backdrop';
       modal.innerHTML=`
         <div class="bg-white rounded-lg p-6 max-w-2xl w-11/12 max-h-[90vh] overflow-y-auto">
-          <h3 class="text-lg font-bold text-blue-900 mb-4">Add Employment Entry</h3>
+          <div class="flex justify-between items-center mb-4">
+            <h3 class="text-lg font-bold text-blue-900">Add Employment Entry</h3>
+            <div id="aiSuggestion"></div>
+          </div>
           <form id="entryForm">
             <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
               <div>
@@ -277,16 +436,16 @@
                 </select>
               </div>
               <div>
-                <label class="block text-sm font-medium text-gray-700 mb-1">Job Title *</label>
+                <label id="entryTitleLabel" class="block text-sm font-medium text-gray-700 mb-1">Job Title *</label>
                 <input type="text" id="entryTitle" required class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500">
               </div>
               <div>
-                <label class="block text-sm font-medium text-gray-700 mb-1">Company/Organization</label>
+                <label id="entryCompanyLabel" class="block text-sm font-medium text-gray-700 mb-1">Company/Organization</label>
                 <input type="text" id="entryCompany" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500">
               </div>
               <div>
                 <label class="block text-sm font-medium text-gray-700 mb-1">Location</label>
-                <input type="text" id="entryLocation" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500">
+                <input type="text" id="entryLocation" placeholder="City, Country" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500">
               </div>
               <div>
                 <label class="block text-sm font-medium text-gray-700 mb-1">Start Date *</label>
@@ -302,7 +461,7 @@
               </div>
             </div>
             <div class="mb-4">
-              <label class="block text-sm font-medium text-gray-700 mb-1">Description</label>
+              <label id="entryDescLabel" class="block text-sm font-medium text-gray-700 mb-1">Description</label>
               <textarea id="entryDescription" rows="4" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"></textarea>
             </div>
             <div class="flex gap-3">
@@ -312,11 +471,8 @@
           </form>
         </div>`;
 
-      // IMPORTANT: Only set unsavedEntryId AFTER modal is created
-      // This prevents the warning from showing prematurely
       state.unsavedEntryId = newId;
       showUnsavedWarning();
-      console.log('Set unsavedEntryId to:', newId);
 
       const currentCheckbox=modal.querySelector('#entryCurrent');
       const endDateInput=modal.querySelector('#entryEndDate');
@@ -345,10 +501,8 @@
         const entry={ id:newId, type, title, company, location, startDate, endDate, isCurrent, description, isNew:true };
         state.entries.push(entry);
         
-        // Clear unsaved state
         state.unsavedEntryId=null;
         hideUnsavedWarning();
-        console.log('Entry saved, cleared unsavedEntryId');
         
         modal.remove();
         renderEntries();
@@ -365,13 +519,16 @@
           if(confirm('Are you sure you want to cancel? Your changes will be lost.')){
             state.unsavedEntryId=null;
             hideUnsavedWarning();
-            console.log('Cancelled, cleared unsavedEntryId');
             modal.remove();
           }
         }
       });
       
       document.body.appendChild(modal);
+      
+      // Initialize intelligent labels
+      updateFormLabels('entry');
+      
       setTimeout(()=> document.getElementById('entryTitle').focus(), 100);
     }
 
@@ -379,7 +536,6 @@
       if(confirm('Are you sure you want to cancel? Your changes will be lost.')){
         state.unsavedEntryId=null;
         hideUnsavedWarning();
-        console.log('Cancelled via button, cleared unsavedEntryId');
         document.querySelector('.modal-backdrop').remove();
       }
     };
@@ -397,7 +553,10 @@
       modal.className='modal-backdrop';
       modal.innerHTML=`
         <div class="bg-white rounded-lg p-6 max-w-2xl w-11/12 max-h-[90vh] overflow-y-auto">
-          <h3 class="text-lg font-bold text-blue-900 mb-4">Edit Entry</h3>
+          <div class="flex justify-between items-center mb-4">
+            <h3 class="text-lg font-bold text-blue-900">Edit Entry</h3>
+            <div id="aiSuggestionEdit"></div>
+          </div>
           <form id="editForm">
             <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
               <div>
@@ -407,16 +566,16 @@
                 </select>
               </div>
               <div>
-                <label class="block text-sm font-medium text-gray-700 mb-1">Job Title *</label>
+                <label id="editTitleLabel" class="block text-sm font-medium text-gray-700 mb-1">Job Title *</label>
                 <input type="text" id="editTitle" required value="${entry.title}" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500">
               </div>
               <div>
-                <label class="block text-sm font-medium text-gray-700 mb-1">Company/Organization</label>
+                <label id="editCompanyLabel" class="block text-sm font-medium text-gray-700 mb-1">Company/Organization</label>
                 <input type="text" id="editCompany" value="${entry.company||''}" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500">
               </div>
               <div>
                 <label class="block text-sm font-medium text-gray-700 mb-1">Location</label>
-                <input type="text" id="editLocation" value="${entry.location||''}" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500">
+                <input type="text" id="editLocation" value="${entry.location||''}" placeholder="City, Country" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500">
               </div>
               <div>
                 <label class="block text-sm font-medium text-gray-700 mb-1">Start Date *</label>
@@ -432,7 +591,7 @@
               </div>
             </div>
             <div class="mb-4">
-              <label class="block text-sm font-medium text-gray-700 mb-1">Description</label>
+              <label id="editDescLabel" class="block text-sm font-medium text-gray-700 mb-1">Description</label>
               <textarea id="editDescription" rows="4" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500">${entry.description||''}</textarea>
             </div>
             <div class="flex gap-3">
@@ -487,6 +646,9 @@
       });
       
       document.body.appendChild(modal);
+      
+      // Initialize intelligent labels for edit
+      updateFormLabels('edit');
     };
 
     window.deleteEntry = function(id){
@@ -565,19 +727,14 @@
         gapList.innerHTML=state.gaps.map((gap, index)=>`
           <div class="mb-3 p-3 bg-white rounded border border-red-200">
             <p class="text-sm font-semibold text-red-900 mb-1">Gap ${index+1}: ${gap.days} days</p>
-            <p class="text-sm text-gray-700 mb-2">${gap.start} to ${gap.end}</p>
-            <button onclick="suggestGapFill(${index})" class="text-xs bg-blue-600 text-white px-3 py-1 rounded hover:bg-blue-700">Get Smart Suggestion</button>
+            <p class="text-sm text-gray-700 mb-2">📅 ${gap.start} to ${gap.end}</p>
+            <button onclick="suggestGapFill(${index})" class="text-xs bg-gradient-to-r from-purple-500 to-pink-500 text-white px-3 py-1 rounded hover:from-purple-600 hover:to-pink-600">🤖 AI Smart Suggestion</button>
           </div>
         `).join('');
         gapWarning.classList.remove('hidden');
       } else {
         document.getElementById('successMessage').classList.remove('hidden');
       }
-    }
-
-    // -------------------- Button State Management --------------------
-    function updateButtonStates(){
-      // This function can be used if needed
     }
 
     // -------------------- Event Listeners --------------------
@@ -596,7 +753,7 @@
     });
 
     function generateCV(){
-      const sorted=[...state.entries].sort((a,b)=> new Date(b.startDate)-new Date(a.startDate));
+      const allEntries=[...state.entries].sort((a,b)=> new Date(b.startDate)-new Date(a.startDate));
       
       const content=`<!DOCTYPE html><html><head><meta charset="UTF-8">
       <title>${state.personalInfo.fullName} - CV</title>
@@ -625,12 +782,13 @@
         <p style="margin:0;color:#374151;">Complete continuous employment history with no gaps from age 16 to present</p>
       </div>
       <h2>Employment History</h2>
-      ${sorted.map(e=>{
+      ${allEntries.map(e=>{
         const endDisplay=e.isCurrent ? 'Present' : e.endDate;
+        const labels = getIntelligentLabels(e.type);
         return `<div class="entry">
           <div class="entry-header">
             <div>
-              <div class="entry-title">${e.title}</div>
+              <div class="entry-title">${labels.icon} ${e.title}</div>
               <div class="entry-company">${e.type.charAt(0).toUpperCase()+e.type.slice(1)}${e.company ? ' at '+e.company : ''}${e.location ? ' - '+e.location : ''}</div>
             </div>
             <div class="entry-date">${e.startDate} → ${endDisplay}</div>
@@ -639,7 +797,7 @@
         </div>`;
       }).join('')}
       <div style="margin-top:50px;padding-top:20px;border-top:1px solid #e5e7eb;text-align:center;color:#9ca3af;font-size:12px;">
-        <p>Generated with Continuous Employment CV Builder</p>
+        <p>Generated with Intelligent CV Builder 🤖</p>
         <p>Complete continuous employment history with no gaps from age 16 to present</p>
       </div>
       <div class="no-print" style="position:fixed;top:20px;right:20px;background:white;padding:15px;border-radius:8px;box-shadow:0 4px 6px rgba(0,0,0,0.1);">
@@ -706,7 +864,7 @@
     }
 
     // Gap suggestions
-    function suggestGapFill(index){
+    window.suggestGapFill = function(index){
       const gap=state.gaps[index];
       const sorted=[...state.entries].sort((a,b)=> new Date(a.startDate)-new Date(b.startDate));
       const gapStart=new Date(gap.start);
@@ -726,21 +884,21 @@
       modal.className='modal-backdrop';
       modal.innerHTML=`
         <div class="bg-white rounded-lg p-6 max-w-md w-11/12">
-          <h3 class="text-lg font-bold text-blue-900 mb-4">Smart Gap Suggestion</h3>
-          <div class="mb-4 p-4 bg-yellow-50 border border-yellow-200 rounded">
+          <h3 class="text-lg font-bold text-blue-900 mb-4">🤖 AI Smart Gap Suggestion</h3>
+          <div class="mb-4 p-4 bg-gradient-to-r from-purple-50 to-pink-50 border border-purple-200 rounded">
             <p class="text-sm text-gray-700 mb-2"><strong>Gap Period:</strong> ${gap.start} to ${gap.end} (${gap.days} days)</p>
             <p class="text-sm text-gray-700 mb-2"><strong>Suggested Type:</strong> <span class="capitalize">${suggestion.type}</span></p>
             <p class="text-sm text-gray-700 mb-2"><strong>Title:</strong> ${suggestion.title}</p>
             <p class="text-sm text-gray-700"><strong>Description:</strong> ${suggestion.description}</p>
           </div>
           <div class="flex gap-3">
-            <button class="flex-1 bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700 transition font-semibold" onclick='applyGapSuggestion(${JSON.stringify(gap)}, ${JSON.stringify(suggestion)})'>Apply Suggestion</button>
+            <button class="flex-1 bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700 transition font-semibold" onclick='applyGapSuggestion(${JSON.stringify(gap)}, ${JSON.stringify(suggestion)})'>✓ Apply Suggestion</button>
             <button class="flex-1 bg-gray-400 text-white px-4 py-2 rounded-lg hover:bg-gray-500 transition font-semibold" onclick="this.parentElement.parentElement.parentElement.remove()">Cancel</button>
           </div>
         </div>`;
       modal.addEventListener('click', e=>{ if(e.target===modal) modal.remove(); });
       document.body.appendChild(modal);
-    }
+    };
 
     function getGapSuggestion(gap, prev, next){
       const d=gap.days;
@@ -763,7 +921,7 @@
       return { type:'unemployment', title:'Unemployed', company:'N/A', description:'Period of unemployment' };
     }
 
-    function applyGapSuggestion(gap, suggestion){
+    window.applyGapSuggestion = function(gap, suggestion){
       const newEntry={
         id: Date.now(),
         type: suggestion.type,
@@ -780,7 +938,7 @@
       document.querySelector('.modal-backdrop').remove();
       renderEntries();
       checkForGaps();
-    }
+    };
 
     // -------------------- Init --------------------
     setupPersonalInfo();
