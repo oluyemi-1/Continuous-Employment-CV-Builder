@@ -753,7 +753,9 @@
     });
 
     function generateCV(){
-      const allEntries=[...state.entries].sort((a,b)=> new Date(b.startDate)-new Date(a.startDate));
+      // Separate employment and education entries
+      const employmentEntries = state.entries.filter(e => e.type !== 'education').sort((a,b)=> new Date(b.startDate)-new Date(a.startDate));
+      const educationEntries = state.entries.filter(e => e.type === 'education').sort((a,b)=> new Date(b.startDate)-new Date(a.startDate));
       
       const content=`<!DOCTYPE html><html><head><meta charset="UTF-8">
       <title>${state.personalInfo.fullName} - CV</title>
@@ -781,8 +783,9 @@
         <h3 style="margin:0 0 10px 0;color:#1e40af;">✓ Continuous Employment Certification</h3>
         <p style="margin:0;color:#374151;">Complete continuous employment history with no gaps from age 16 to present</p>
       </div>
+      ${employmentEntries.length > 0 ? `
       <h2>Employment History</h2>
-      ${allEntries.map(e=>{
+      ${employmentEntries.map(e=>{
         const endDisplay=e.isCurrent ? 'Present' : e.endDate;
         const labels = getIntelligentLabels(e.type);
         return `<div class="entry">
@@ -796,6 +799,24 @@
           ${e.description ? `<div class="entry-description">${e.description}</div>` : ''}
         </div>`;
       }).join('')}
+      ` : ''}
+      ${educationEntries.length > 0 ? `
+      <h2>Education History</h2>
+      ${educationEntries.map(e=>{
+        const endDisplay=e.isCurrent ? 'Present' : e.endDate;
+        const labels = getIntelligentLabels(e.type);
+        return `<div class="entry">
+          <div class="entry-header">
+            <div>
+              <div class="entry-title">${labels.icon} ${e.title}</div>
+              <div class="entry-company">${e.company}${e.location ? ' - '+e.location : ''}</div>
+            </div>
+            <div class="entry-date">${e.startDate} → ${endDisplay}</div>
+          </div>
+          ${e.description ? `<div class="entry-description">${e.description}</div>` : ''}
+        </div>`;
+      }).join('')}
+      ` : ''}
       <div style="margin-top:50px;padding-top:20px;border-top:1px solid #e5e7eb;text-align:center;color:#9ca3af;font-size:12px;">
         <p>Generated with Intelligent CV Builder 🤖</p>
         <p>Complete continuous employment history with no gaps from age 16 to present</p>
