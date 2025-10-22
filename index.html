@@ -147,461 +147,480 @@
       'career break','parental leave','sabbatical','freelancing'
     ];
 
-    // -------------------- Utils --------------------
-    function escapeHtml(text){
-      const map={'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'};
-      return text ? String(text).replace(/[&<>"']/g, m => map[m]) : '';
-    }
-
-    function calculateAge(dob){
-      if(!dob) return {age:'',age16Date:''};
-      const today=new Date(), birth=new Date(dob);
-      let age=today.getFullYear()-birth.getFullYear();
-      const m=today.getMonth()-birth.getMonth();
-      if(m<0 || (m===0 && today.getDate()<birth.getDate())) age--;
-
-      const age16=new Date(birth); age16.setFullYear(age16.getFullYear()+16);
-      return {age, age16Date: age16.toISOString().split('T')[0]};
-    }
-
-    function getNextExpectedDate(){
-      if(!state.personalInfo.age16Date) return null;
-      if(state.entries.length===0) return state.personalInfo.age16Date;
-
-      const sorted=[...state.entries].sort((a,b)=> new Date(b.startDate)-new Date(a.startDate));
-      const latest=sorted[0];
-      if(latest.isCurrent) return null;
-      const end=new Date(latest.endDate); end.setDate(end.getDate()+1);
-      return end.toISOString().split('T')[0];
-    }
-
-    function validateEntry(entry){
-      const errors=[];
-      if(!entry.title?.trim()) errors.push('Job Title/Activity is required');
-      if(!entry.company?.trim()) errors.push('Company/Institution is required');
-      if(!entry.startDate) errors.push('Start Date is required');
-      if(!entry.isCurrent && !entry.endDate) errors.push('End Date is required (or check Current)');
-      if(!entry.description?.trim()) errors.push('Description is required');
-
-      const expectedDate=getNextExpectedDate();
-      if(expectedDate && entry.startDate){
-        const entryStart=new Date(entry.startDate);
-        const expected=new Date(expectedDate);
-        const diffDays=Math.abs((entryStart-expected)/(1000*60*60*24));
-        if(diffDays>14){
-          errors.push(`Start date should be within 14 days of ${expectedDate}. Current gap: ${Math.floor(diffDays)} days`);
-        }
-      }
-      if(entry.startDate && entry.endDate && !entry.isCurrent){
-        if(new Date(entry.endDate) < new Date(entry.startDate)){
-          errors.push('End date cannot be before start date');
-        }
-      }
-      return errors;
-    }
-
-    function checkForGaps(){
-      if(!state.personalInfo.dateOfBirth || state.entries.length===0) return;
-
-      const startDate=new Date(state.personalInfo.dateOfBirth);
-      startDate.setFullYear(startDate.getFullYear()+16);
-
-      const sorted=[...state.entries].sort((a,b)=> new Date(a.startDate)-new Date(b.startDate));
-      const found=[];
-      let currentDate=startDate;
-
-      sorted.forEach(entry=>{
-        const entryStart=new Date(entry.startDate);
-        if(entryStart>currentDate){
-          const gapDays=Math.floor((entryStart-currentDate)/(1000*60*60*24));
-          if(gapDays>0){
-            found.push({
-              start: currentDate.toISOString().split('T')[0],
-              end: new Date(entryStart.getTime()-86400000).toISOString().split('T')[0],
-              days: gapDays
-            });
-          }
-        }
-        currentDate = entry.isCurrent ? new Date() : new Date(entry.endDate);
-        currentDate.setDate(currentDate.getDate()+1);
+    // -------------------- Personal Information --------------------
+    function setupPersonalInfo(){
+      ['fullName','email','phone','address','postcode'].forEach(id=>{
+        const el=document.getElementById(id);
+        el.value=state.personalInfo[id]||'';
+        el.addEventListener('input', ()=>{ state.personalInfo[id]=el.value; });
       });
 
+      const dob=document.getElementById('dateOfBirth');
+      dob.value=state.personalInfo.dateOfBirth||'';
+      dob.addEventListener('change', function(){
+        state.personalInfo.dateOfBirth=this.value;
+        if(!this.value){ document.getElementById('ageInfo').classList.add('hidden'); return; }
+        const birthDate=new Date(this.value);
+        const today=new Date();
+        let age=today.getFullYear()-birthDate.getFullYear();
+        const m=today.getMonth()-birthDate.getMonth();
+        if(m<0||(m===0&&today.getDate()<birthDate.getDate())) age--;
+        
+        const age16=new Date(birthDate);
+        age16.setFullYear(birthDate.getFullYear()+16);
+        const age16Str=age16.toISOString().split('T')[0];
+        
+        state.personalInfo.currentAge=age;
+        state.personalInfo.age16Date=age16Str;
+        
+        document.getElementById('currentAge').textContent=age;
+        document.getElementById('age16Date').textContent=age16Str;
+        document.getElementById('startDate').textContent=age16Str;
+        document.getElementById('ageInfo').classList.remove('hidden');
+        document.getElementById('firstEntryHelp').classList.remove('hidden');
+      });
+    }
+
+    // -------------------- Unsaved Warning --------------------
+    function showUnsavedWarning(){
+      document.getElementById('unsavedWarning').classList.remove('hidden');
+    }
+    function hideUnsavedWarning(){
+      document.getElementById('unsavedWarning').classList.add('hidden');
+    }
+
+    // -------------------- Entry Management --------------------
+    function renderEntries(){
+      const container=document.getElementById('employmentEntries');
+      const sorted=[...state.entries].sort((a,b)=> new Date(b.startDate)-new Date(a.startDate));
+      
+      if(sorted.length===0){
+        container.innerHTML='<p class="text-gray-500 text-center py-8">No entries yet. Click "Add Entry" to begin.</p>';
+        return;
+      }
+      
+      container.innerHTML=sorted.map(entry=>{
+        const endDisplay=entry.isCurrent ? 'Present' : entry.endDate;
+        const isNewClass=entry.isNew ? 'border-4 border-blue-400 shadow-lg' : '';
+        return `
+          <div class="mb-4 p-4 border border-gray-200 rounded-lg ${isNewClass}" data-entry-id="${entry.id}">
+            <div class="flex justify-between items-start mb-2">
+              <div>
+                <h3 class="font-semibold text-lg text-gray-900">${entry.title}</h3>
+                <p class="text-gray-600 capitalize">${entry.type}${entry.company ? ' at '+entry.company : ''}</p>
+                ${entry.location ? `<p class="text-sm text-gray-500">${entry.location}</p>` : ''}
+              </div>
+              <div class="flex gap-2">
+                <button onclick="editEntry(${entry.id})" class="text-blue-600 hover:text-blue-800 text-sm font-medium">Edit</button>
+                <button onclick="deleteEntry(${entry.id})" class="text-red-600 hover:text-red-800 text-sm font-medium">Delete</button>
+              </div>
+            </div>
+            <p class="text-sm text-gray-600 mb-2">${entry.startDate} → ${endDisplay}</p>
+            ${entry.description ? `<p class="text-gray-700 text-sm">${entry.description}</p>` : ''}
+          </div>`;
+      }).join('');
+    }
+
+    function addNewEntry(){
+      // Check if personal info is complete
+      const requiredFields=['fullName','email','phone','address','postcode','dateOfBirth'];
+      const missingFields=requiredFields.filter(f=> !state.personalInfo[f]);
+      
+      if(missingFields.length>0){
+        alert('Please complete all personal information fields before adding entries');
+        return;
+      }
+
+      // Check if there's already an unsaved entry
+      if(state.unsavedEntryId){
+        alert('Please save or cancel your current entry before adding a new one');
+        return;
+      }
+
+      const newId=Date.now();
+      const modal=document.createElement('div');
+      modal.className='modal-backdrop';
+      modal.innerHTML=`
+        <div class="bg-white rounded-lg p-6 max-w-2xl w-11/12 max-h-[90vh] overflow-y-auto">
+          <h3 class="text-lg font-bold text-blue-900 mb-4">Add Employment Entry</h3>
+          <form id="entryForm">
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+              <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Type *</label>
+                <select id="entryType" required class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500">
+                  ${[...defaultTypes, ...state.customTypes].map(t=> `<option value="${t}">${t.charAt(0).toUpperCase()+t.slice(1)}</option>`).join('')}
+                </select>
+              </div>
+              <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Job Title *</label>
+                <input type="text" id="entryTitle" required class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500">
+              </div>
+              <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Company/Organization</label>
+                <input type="text" id="entryCompany" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500">
+              </div>
+              <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Location</label>
+                <input type="text" id="entryLocation" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500">
+              </div>
+              <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Start Date *</label>
+                <input type="date" id="entryStartDate" required class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500">
+              </div>
+              <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">End Date</label>
+                <input type="date" id="entryEndDate" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500">
+                <label class="flex items-center mt-2 text-sm">
+                  <input type="checkbox" id="entryCurrent" class="mr-2">
+                  Currently in this position
+                </label>
+              </div>
+            </div>
+            <div class="mb-4">
+              <label class="block text-sm font-medium text-gray-700 mb-1">Description</label>
+              <textarea id="entryDescription" rows="4" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"></textarea>
+            </div>
+            <div class="flex gap-3">
+              <button type="submit" class="flex-1 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition font-semibold">Save Entry</button>
+              <button type="button" class="flex-1 bg-gray-400 text-white px-4 py-2 rounded-lg hover:bg-gray-500 transition font-semibold" onclick="cancelEntry()">Cancel</button>
+            </div>
+          </form>
+        </div>`;
+
+      // Set unsaved entry AFTER modal is created and shown
+      state.unsavedEntryId = newId;
+      showUnsavedWarning();
+
+      const currentCheckbox=modal.querySelector('#entryCurrent');
+      const endDateInput=modal.querySelector('#entryEndDate');
+      
+      currentCheckbox.addEventListener('change', function(){
+        endDateInput.disabled=this.checked;
+        if(this.checked) endDateInput.value='';
+      });
+
+      modal.querySelector('#entryForm').addEventListener('submit', function(e){
+        e.preventDefault();
+        const type=document.getElementById('entryType').value;
+        const title=document.getElementById('entryTitle').value;
+        const company=document.getElementById('entryCompany').value;
+        const location=document.getElementById('entryLocation').value;
+        const startDate=document.getElementById('entryStartDate').value;
+        const endDate=document.getElementById('entryEndDate').value;
+        const isCurrent=document.getElementById('entryCurrent').checked;
+        const description=document.getElementById('entryDescription').value;
+
+        if(!isCurrent && !endDate){
+          alert('Please provide an end date or mark as current position');
+          return;
+        }
+
+        const entry={ id:newId, type, title, company, location, startDate, endDate, isCurrent, description, isNew:true };
+        state.entries.push(entry);
+        state.unsavedEntryId=null;
+        hideUnsavedWarning();
+        modal.remove();
+        renderEntries();
+        checkForGaps();
+        
+        setTimeout(()=>{
+          entry.isNew=false;
+          renderEntries();
+        }, 3000);
+      });
+
+      modal.addEventListener('click', e=>{
+        if(e.target===modal){
+          if(confirm('Are you sure you want to cancel? Your changes will be lost.')){
+            state.unsavedEntryId=null;
+            hideUnsavedWarning();
+            modal.remove();
+          }
+        }
+      });
+      
+      document.body.appendChild(modal);
+      setTimeout(()=> document.getElementById('entryTitle').focus(), 100);
+    }
+
+    window.cancelEntry = function(){
+      if(confirm('Are you sure you want to cancel? Your changes will be lost.')){
+        state.unsavedEntryId=null;
+        hideUnsavedWarning();
+        document.querySelector('.modal-backdrop').remove();
+      }
+    };
+
+    window.editEntry = function(id){
+      if(state.unsavedEntryId){ alert('Please save your current entry first'); return; }
+      
+      const entry=state.entries.find(e=> e.id===id);
+      if(!entry) return;
+
+      const modal=document.createElement('div');
+      modal.className='modal-backdrop';
+      modal.innerHTML=`
+        <div class="bg-white rounded-lg p-6 max-w-2xl w-11/12 max-h-[90vh] overflow-y-auto">
+          <h3 class="text-lg font-bold text-blue-900 mb-4">Edit Entry</h3>
+          <form id="editForm">
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+              <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Type *</label>
+                <select id="editType" required class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500">
+                  ${[...defaultTypes, ...state.customTypes].map(t=> `<option value="${t}" ${t===entry.type?'selected':''}>${t.charAt(0).toUpperCase()+t.slice(1)}</option>`).join('')}
+                </select>
+              </div>
+              <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Job Title *</label>
+                <input type="text" id="editTitle" required value="${entry.title}" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500">
+              </div>
+              <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Company/Organization</label>
+                <input type="text" id="editCompany" value="${entry.company||''}" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500">
+              </div>
+              <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Location</label>
+                <input type="text" id="editLocation" value="${entry.location||''}" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500">
+              </div>
+              <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Start Date *</label>
+                <input type="date" id="editStartDate" required value="${entry.startDate}" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500">
+              </div>
+              <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">End Date</label>
+                <input type="date" id="editEndDate" value="${entry.endDate||''}" ${entry.isCurrent?'disabled':''} class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500">
+                <label class="flex items-center mt-2 text-sm">
+                  <input type="checkbox" id="editCurrent" ${entry.isCurrent?'checked':''} class="mr-2">
+                  Currently in this position
+                </label>
+              </div>
+            </div>
+            <div class="mb-4">
+              <label class="block text-sm font-medium text-gray-700 mb-1">Description</label>
+              <textarea id="editDescription" rows="4" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500">${entry.description||''}</textarea>
+            </div>
+            <div class="flex gap-3">
+              <button type="submit" class="flex-1 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition font-semibold">Update Entry</button>
+              <button type="button" class="flex-1 bg-gray-400 text-white px-4 py-2 rounded-lg hover:bg-gray-500 transition font-semibold" onclick="this.parentElement.parentElement.parentElement.parentElement.remove()">Cancel</button>
+            </div>
+          </form>
+        </div>`;
+
+      state.unsavedEntryId=id;
+      showUnsavedWarning();
+
+      const currentCheckbox=modal.querySelector('#editCurrent');
+      const endDateInput=modal.querySelector('#editEndDate');
+      
+      currentCheckbox.addEventListener('change', function(){
+        endDateInput.disabled=this.checked;
+        if(this.checked) endDateInput.value='';
+      });
+
+      modal.querySelector('#editForm').addEventListener('submit', function(e){
+        e.preventDefault();
+        entry.type=document.getElementById('editType').value;
+        entry.title=document.getElementById('editTitle').value;
+        entry.company=document.getElementById('editCompany').value;
+        entry.location=document.getElementById('editLocation').value;
+        entry.startDate=document.getElementById('editStartDate').value;
+        entry.endDate=document.getElementById('editEndDate').value;
+        entry.isCurrent=document.getElementById('editCurrent').checked;
+        entry.description=document.getElementById('editDescription').value;
+
+        if(!entry.isCurrent && !entry.endDate){
+          alert('Please provide an end date or mark as current position');
+          return;
+        }
+
+        state.unsavedEntryId=null;
+        hideUnsavedWarning();
+        modal.remove();
+        renderEntries();
+        checkForGaps();
+      });
+
+      modal.addEventListener('click', e=>{
+        if(e.target===modal){
+          if(confirm('Are you sure you want to cancel? Your changes will be lost.')){
+            state.unsavedEntryId=null;
+            hideUnsavedWarning();
+            modal.remove();
+          }
+        }
+      });
+      
+      document.body.appendChild(modal);
+    };
+
+    window.deleteEntry = function(id){
+      if(state.unsavedEntryId){ alert('Please save your current entry first'); return; }
+      if(confirm('Are you sure you want to delete this entry?')){
+        state.entries=state.entries.filter(e=> e.id!==id);
+        renderEntries();
+        checkForGaps();
+      }
+    };
+
+    // -------------------- Gap Detection --------------------
+    function checkForGaps(){
+      state.gaps=[];
+      document.getElementById('gapWarning').classList.add('hidden');
+      document.getElementById('successMessage').classList.add('hidden');
+
+      if(!state.personalInfo.age16Date || state.entries.length===0){
+        return;
+      }
+
+      const sorted=[...state.entries].sort((a,b)=> new Date(a.startDate)-new Date(b.startDate));
+      const age16=new Date(state.personalInfo.age16Date);
       const today=new Date();
-      if(currentDate<today){
-        const gapDays=Math.floor((today-currentDate)/(1000*60*60*24));
-        if(gapDays>0){
-          found.push({
-            start: currentDate.toISOString().split('T')[0],
-            end: today.toISOString().split('T')[0],
-            days: gapDays
+      
+      // Check from age 16 to first entry
+      const firstStart=new Date(sorted[0].startDate);
+      const daysDiff1=Math.floor((firstStart-age16)/(1000*60*60*24));
+      if(daysDiff1>14){
+        state.gaps.push({
+          start: state.personalInfo.age16Date,
+          end: sorted[0].startDate,
+          days: daysDiff1,
+          before: null,
+          after: sorted[0]
+        });
+      }
+
+      // Check between entries
+      for(let i=0; i<sorted.length-1; i++){
+        const currentEnd=sorted[i].isCurrent ? today : new Date(sorted[i].endDate);
+        const nextStart=new Date(sorted[i+1].startDate);
+        const days=Math.floor((nextStart-currentEnd)/(1000*60*60*24));
+        
+        if(days>14){
+          state.gaps.push({
+            start: currentEnd.toISOString().split('T')[0],
+            end: sorted[i+1].startDate,
+            days: days,
+            before: sorted[i],
+            after: sorted[i+1]
           });
         }
       }
 
-      state.gaps=found;
-      renderGaps();
-    }
-
-    // -------------------- Render --------------------
-    function renderGaps(){
-      const gapWarning=document.getElementById('gapWarning');
-      const gapList=document.getElementById('gapList');
-      const successMessage=document.getElementById('successMessage');
-
-      if(state.gaps.length>0 && !state.unsavedEntryId){
-        gapWarning.classList.remove('hidden');
-        successMessage.classList.add('hidden');
-        gapList.innerHTML = state.gaps.map((gap, i)=>`
-          <div class="flex justify-between items-center mb-2 flex-wrap gap-2">
-            <p class="text-red-800 text-sm">Gap from ${gap.start} to ${gap.end} (${gap.days} days)</p>
-            <button onclick="suggestGapFill(${i})" class="flex items-center gap-1 bg-yellow-500 text-white px-3 py-1 rounded text-sm hover:bg-yellow-600 transition">
-              💡 Suggest
-            </button>
-          </div>
-        `).join('');
-      } else {
-        gapWarning.classList.add('hidden');
-        if(state.entries.length>0 && state.personalInfo.dateOfBirth && !state.unsavedEntryId){
-          successMessage.classList.remove('hidden');
-        } else {
-          successMessage.classList.add('hidden');
+      // Check from last entry to today
+      const lastEntry=sorted[sorted.length-1];
+      if(!lastEntry.isCurrent){
+        const lastEnd=new Date(lastEntry.endDate);
+        const daysToToday=Math.floor((today-lastEnd)/(1000*60*60*24));
+        if(daysToToday>14){
+          state.gaps.push({
+            start: lastEntry.endDate,
+            end: today.toISOString().split('T')[0],
+            days: daysToToday,
+            before: lastEntry,
+            after: null
+          });
         }
       }
-    }
 
-    function renderEntries(){
-      const employmentContainer=document.getElementById('employmentEntries');
-      const educationContainer=document.getElementById('educationEntries');
-      const educationSection=document.getElementById('educationSection');
-
-      const employmentEntries=state.entries.filter(e=> e.type!=='education');
-      const educationEntries=state.entries.filter(e=> e.type==='education');
-
-      employmentContainer.innerHTML='';
-      employmentEntries.forEach(entry=>{
-        const el=document.createElement('div');
-        el.innerHTML=createEntryHTML(entry);
-        employmentContainer.appendChild(el.firstElementChild);
-      });
-
-      if(educationEntries.length>0){
-        educationSection.classList.remove('hidden');
-        educationContainer.innerHTML='';
-        educationEntries.forEach(entry=>{
-          const el=document.createElement('div');
-          el.innerHTML=createEntryHTML(entry);
-          educationContainer.appendChild(el.firstElementChild);
-        });
-      } else {
-        educationSection.classList.add('hidden');
-      }
-
-      const firstEntryHelp=document.getElementById('firstEntryHelp');
-      if(state.personalInfo.age16Date && state.entries.length===0){
-        firstEntryHelp.classList.remove('hidden');
-        document.getElementById('startDate').textContent=state.personalInfo.age16Date;
-      } else {
-        firstEntryHelp.classList.add('hidden');
-      }
-    }
-
-    function createEntryHTML(entry){
-      const allTypes=[...defaultTypes, ...state.customTypes];
-      const typeOptions = entry.type==='education'
-        ? allTypes.map(t=>`<option value="${escapeHtml(t)}" ${t===entry.type?'selected':''}>${t.charAt(0).toUpperCase()+t.slice(1)}</option>`).join('')
-        : allTypes.filter(t=>t!=='education').map(t=>`<option value="${escapeHtml(t)}" ${t===entry.type?'selected':''}>${t.charAt(0).toUpperCase()+t.slice(1)}</option>`).join('');
-
-      const expectedDate=getNextExpectedDate();
-      const showExpectedDate = expectedDate && entry.id===state.unsavedEntryId;
-
-      const deleteBtn = `
-        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <polyline points="3 6 5 6 21 6"></polyline>
-          <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
-          <line x1="10" y1="11" x2="10" y2="17"></line>
-          <line x1="14" y1="11" x2="14" y2="17"></line>
-        </svg>
-      `;
-      const saveBtn = `
-        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path>
-          <polyline points="17 21 17 13 7 13 7 21"></polyline>
-          <polyline points="7 3 7 8 15 8"></polyline>
-        </svg>
-      `;
-
-      return `
-        <div class="mb-6 p-6 rounded-lg border-2 ${entry.isNew ? 'bg-yellow-50 border-yellow-300' : 'bg-gray-50 border-gray-200'}">
-          <div class="flex justify-between items-start mb-4">
-            <select data-entry-id="${entry.id}" data-field="type" class="entry-field px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 capitalize">
-              ${typeOptions}
-            </select>
-            <button onclick="deleteEntry(${entry.id})" class="text-red-600 hover:text-red-800">${deleteBtn}</button>
+      // Display results
+      if(state.gaps.length>0){
+        const gapWarning=document.getElementById('gapWarning');
+        const gapList=document.getElementById('gapList');
+        gapList.innerHTML=state.gaps.map((gap, index)=>`
+          <div class="mb-3 p-3 bg-white rounded border border-red-200">
+            <p class="text-sm font-semibold text-red-900 mb-1">Gap ${index+1}: ${gap.days} days</p>
+            <p class="text-sm text-gray-700 mb-2">${gap.start} to ${gap.end}</p>
+            <button onclick="suggestGapFill(${index})" class="text-xs bg-blue-600 text-white px-3 py-1 rounded hover:bg-blue-700">Get Smart Suggestion</button>
           </div>
-
-          ${showExpectedDate ? `
-            <div class="mb-4 p-3 bg-blue-100 border border-blue-300 rounded text-sm">
-              <p class="text-blue-900">📅 <strong>Expected start date: ${expectedDate}</strong></p>
-              <p class="text-blue-800 mt-1">Your start date should be within 14 days of this date to avoid gaps</p>
-            </div>` : ''}
-
-          <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
-            <input type="text" data-entry-id="${entry.id}" data-field="title"
-              class="entry-field px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
-              placeholder="${entry.type==='education' ? 'Course / Qualification' : 'Job Title / Activity'} *"
-              value="${escapeHtml(entry.title)}" />
-
-            <input type="text" data-entry-id="${entry.id}" data-field="company"
-              class="entry-field px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
-              placeholder="${entry.type==='education' ? 'Institution' : 'Company / Institution'} *"
-              value="${escapeHtml(entry.company)}" />
-
-            <input type="text" data-entry-id="${entry.id}" data-field="location"
-              class="entry-field px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
-              placeholder="Location"
-              value="${escapeHtml(entry.location)}" />
-          </div>
-
-          <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
-            <div>
-              <label class="block text-sm text-gray-700 mb-1">Start Date *</label>
-              <input type="date" data-entry-id="${entry.id}" data-field="startDate" class="entry-field px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 w-full" value="${entry.startDate}">
-            </div>
-            <div>
-              <label class="block text-sm text-gray-700 mb-1">End Date *</label>
-              <div class="flex items-center gap-2">
-                <input type="date" data-entry-id="${entry.id}" data-field="endDate" class="entry-field px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 flex-1" value="${entry.endDate}" ${entry.isCurrent ? 'disabled' : ''}>
-                <label class="flex items-center gap-2 text-sm">
-                  <input type="checkbox" data-entry-id="${entry.id}" data-field="isCurrent" class="entry-checkbox w-4 h-4" ${entry.isCurrent ? 'checked' : ''}>
-                  Current
-                </label>
-              </div>
-            </div>
-          </div>
-
-          <textarea data-entry-id="${entry.id}" data-field="description" class="entry-field w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 mb-4" placeholder="${entry.type==='education' ? 'Description of course, achievements, grades...' : 'Description of responsibilities, achievements, or activities...'} *" rows="3">${escapeHtml(entry.description)}</textarea>
-
-          ${entry.isNew ? `
-            <button onclick="saveEntry(${entry.id})" class="w-full flex items-center justify-center gap-2 bg-green-600 text-white px-4 py-3 rounded-lg hover:bg-green-700 transition font-semibold">
-              ${saveBtn} Save Entry
-            </button>` : ''}
-        </div>
-      `;
-    }
-
-    // -------------------- Events (delegated) --------------------
-    document.addEventListener('input', function(e){
-      if(e.target.classList.contains('entry-field')){
-        const entryId=parseInt(e.target.dataset.entryId);
-        const field=e.target.dataset.field;
-        const value=e.target.value;
-        updateEntryField(entryId, field, value);
-      }
-    });
-
-    document.addEventListener('change', function(e){
-      if(e.target.classList.contains('entry-field')){
-        const entryId=parseInt(e.target.dataset.entryId);
-        const field=e.target.dataset.field;
-        const value=e.target.value;
-        updateEntryField(entryId, field, value);
-      }
-      if(e.target.classList.contains('entry-checkbox')){
-        const entryId=parseInt(e.target.dataset.entryId);
-        const field=e.target.dataset.field;
-        const value=e.target.checked;
-        updateEntryField(entryId, field, value);
-      }
-    });
-
-    function addEntry(){
-      if(state.unsavedEntryId){
-        alert('Please save your current entry first');
-        return;
-      }
-      const expectedDate=getNextExpectedDate();
-      const newEntry={
-        id: Date.now(),
-        type: 'employment',
-        title:'', company:'', location:'',
-        startDate: expectedDate || '',
-        endDate:'', isCurrent:false, description:'',
-        isNew:true
-      };
-      state.entries.unshift(newEntry);
-      state.unsavedEntryId=newEntry.id;
-
-      // Do NOT show the yellow banner yet—wait until the user edits something
-      renderEntries();
-      updateButtonStates();
-    }
-
-    function updateEntryField(id, field, value){
-      const entry=state.entries.find(e=>e.id===id);
-      if(!entry) return;
-
-      if(field==='isCurrent'){
-        entry.isCurrent=value;
-        if(value) entry.endDate='';
-        renderEntries(); // refresh disabled state
+        `).join('');
+        gapWarning.classList.remove('hidden');
       } else {
-        entry[field]=value;
-      }
-
-      // Show the unsaved banner after the user begins editing the new entry
-      if(state.unsavedEntryId===id && entry.isNew){
-        document.getElementById('unsavedWarning').classList.remove('hidden');
+        document.getElementById('successMessage').classList.remove('hidden');
       }
     }
 
-    function saveEntry(id){
-      const entry=state.entries.find(e=>e.id===id);
-      if(!entry) return;
-
-      const errors=validateEntry(entry);
-      if(errors.length>0){
-        alert('Please fix the following errors:\n\n'+errors.join('\n'));
-        return;
-      }
-      entry.isNew=false;
-      state.unsavedEntryId=null;
-      document.getElementById('unsavedWarning').classList.add('hidden');
-
-      alert('Entry saved successfully!');
-      renderEntries();
-      checkForGaps();
-      updateButtonStates();
-    }
-
-    function deleteEntry(id){
-      if(!confirm('Are you sure you want to delete this entry?')) return;
-      state.entries = state.entries.filter(e=>e.id!==id);
-      if(state.unsavedEntryId===id){
-        state.unsavedEntryId=null;
-        document.getElementById('unsavedWarning').classList.add('hidden');
-      }
-      renderEntries();
-      checkForGaps();
-      updateButtonStates();
-    }
-
+    // -------------------- Button State Management --------------------
     function updateButtonStates(){
-      const addBtn=document.getElementById('addEntryBtn');
-      const customBtn=document.getElementById('customTypeBtn');
+      const hasPersonalInfo=state.personalInfo.fullName && state.personalInfo.email && 
+                            state.personalInfo.phone && state.personalInfo.dateOfBirth;
       const downloadBtn=document.getElementById('downloadBtn');
       const shareBtn=document.getElementById('shareBtn');
-
-      const setDisabled = (btn, val)=>{
-        btn.disabled=val;
-        btn.classList.toggle('opacity-50', val);
-        btn.classList.toggle('cursor-not-allowed', val);
-      };
-
-      const disabled = !!state.unsavedEntryId;
-      [addBtn, customBtn, downloadBtn, shareBtn].forEach(btn=> setDisabled(btn, disabled));
+      const checkGapsBtn=document.getElementById('checkGapsBtn');
+      
+      if(!hasPersonalInfo || state.entries.length===0){
+        downloadBtn.disabled=true;
+        downloadBtn.classList.add('opacity-50', 'cursor-not-allowed');
+        shareBtn.disabled=true;
+        shareBtn.classList.add('opacity-50', 'cursor-not-allowed');
+      } else {
+        downloadBtn.disabled=false;
+        downloadBtn.classList.remove('opacity-50', 'cursor-not-allowed');
+        shareBtn.disabled=false;
+        shareBtn.classList.remove('opacity-50', 'cursor-not-allowed');
+      }
     }
 
-    // -------------------- Personal Info listeners --------------------
-    document.getElementById('dateOfBirth').addEventListener('change', function(e){
-      const {age, age16Date}=calculateAge(e.target.value);
-      state.personalInfo.dateOfBirth=e.target.value;
-      state.personalInfo.currentAge=age;
-      state.personalInfo.age16Date=age16Date;
-
-      if(age){
-        document.getElementById('currentAge').textContent=age;
-        document.getElementById('age16Date').textContent=age16Date;
-        document.getElementById('ageInfo').classList.remove('hidden');
-      }
-      renderEntries();
+    // -------------------- Event Listeners --------------------
+    document.getElementById('addEntryBtn').addEventListener('click', addNewEntry);
+    
+    document.getElementById('checkGapsBtn').addEventListener('click', function(){
+      if(state.unsavedEntryId){ alert('Please save your current entry first'); return; }
+      checkForGaps();
     });
-    document.getElementById('fullName').addEventListener('input', e=> state.personalInfo.fullName=e.target.value);
-    document.getElementById('email').addEventListener('input', e=> state.personalInfo.email=e.target.value);
-    document.getElementById('phone').addEventListener('input', e=> state.personalInfo.phone=e.target.value);
-    document.getElementById('address').addEventListener('input', e=> state.personalInfo.address=e.target.value);
-    document.getElementById('postcode').addEventListener('input', e=> state.personalInfo.postcode=e.target.value);
 
-    document.getElementById('addEntryBtn').addEventListener('click', addEntry);
-    document.getElementById('checkGapsBtn').addEventListener('click', checkForGaps);
-
-    // -------------------- Download / Share --------------------
     document.getElementById('downloadBtn').addEventListener('click', function(){
       if(state.unsavedEntryId){ alert('Please save your current entry before downloading'); return; }
       checkForGaps();
       if(state.gaps.length>0){ alert('Please fill all employment gaps before downloading your CV'); return; }
-      generatePDF();
+      generateCV();
     });
 
-    function generatePDF(){
+    function generateCV(){
       const sorted=[...state.entries].sort((a,b)=> new Date(b.startDate)-new Date(a.startDate));
-      const employmentEntries=sorted.filter(e=>e.type!=='education');
-      const educationEntries=sorted.filter(e=>e.type==='education');
-
-      let content = `
-      <!DOCTYPE html><html><head><meta charset="UTF-8"><title>${escapeHtml(state.personalInfo.fullName)} - CV</title>
+      
+      const content=`<!DOCTYPE html><html><head><meta charset="UTF-8">
+      <title>${state.personalInfo.fullName} - CV</title>
       <style>
-        @page { size: A4; margin: 20mm; } *{margin:0;padding:0;box-sizing:border-box;}
-        body{font-family:'Segoe UI',Tahoma,Geneva,Verdana,sans-serif;line-height:1.6;color:#333;background:white;padding:20px;}
-        .container{max-width:800px;margin:0 auto;}
-        h1{color:#2563eb;font-size:32px;border-bottom:4px solid #2563eb;padding-bottom:12px;margin-bottom:20px;}
-        h2{color:#1e40af;font-size:24px;margin-top:30px;margin-bottom:20px;border-bottom:2px solid #e5e7eb;padding-bottom:8px;}
-        .personal-info{margin-bottom:30px;background:#f8fafc;padding:20px;border-radius:8px;border-left:4px solid #2563eb;}
-        .personal-info p{margin-bottom:8px;font-size:14px;}
-        .personal-info strong{color:#1e40af;display:inline-block;width:120px;}
-        .entry{margin-bottom:25px;page-break-inside:avoid;border-left:3px solid #e5e7eb;padding-left:20px;}
-        .entry-header{font-weight:bold;font-size:18px;color:#1e40af;margin-bottom:5px;}
-        .entry-meta{color:#666;font-size:14px;margin-bottom:10px;}
-        .entry-company{font-weight:600;color:#374151;}
-        .entry-dates{color:#6b7280;font-style:italic;}
-        .entry-type{display:inline-block;background:#dbeafe;color:#1e40af;padding:2px 8px;border-radius:4px;font-size:12px;margin-left:8px;text-transform:capitalize;}
-        .description{margin-top:10px;line-height:1.7;color:#4b5563;font-size:14px;}
-        .footer{margin-top:40px;padding-top:20px;border-top:2px solid #e5e7eb;text-align:center;color:#9ca3af;font-size:12px;}
-        @media print { body{padding:0;} .no-print{display:none;} }
-      </style></head><body><div class="container">
-      <h1>${escapeHtml(state.personalInfo.fullName)}</h1>
-      <div class="personal-info">
-        <p><strong>Email:</strong> ${escapeHtml(state.personalInfo.email)}</p>
-        <p><strong>Phone:</strong> ${escapeHtml(state.personalInfo.phone)}</p>
-        <p><strong>Address:</strong> ${escapeHtml(state.personalInfo.address)}</p>
-        <p><strong>Postcode:</strong> ${escapeHtml(state.personalInfo.postcode)}</p>
-        <p><strong>Date of Birth:</strong> ${escapeHtml(state.personalInfo.dateOfBirth)} (Age: ${escapeHtml(state.personalInfo.currentAge)})</p>
+        @media print { .no-print { display: none; } }
+        body { font-family: Arial, sans-serif; max-width: 850px; margin: 40px auto; padding: 0 20px; line-height: 1.6; }
+        h1 { color: #1e40af; margin-bottom: 5px; }
+        h2 { color: #1e40af; border-bottom: 2px solid #1e40af; padding-bottom: 5px; margin-top: 30px; }
+        .contact { color: #4b5563; margin-bottom: 30px; }
+        .entry { margin-bottom: 25px; page-break-inside: avoid; }
+        .entry-header { display: flex; justify-content: space-between; margin-bottom: 8px; }
+        .entry-title { font-weight: bold; font-size: 16px; color: #111827; }
+        .entry-company { color: #4b5563; font-style: italic; }
+        .entry-date { color: #6b7280; font-size: 14px; }
+        .entry-description { color: #374151; margin-top: 8px; }
+        .certification { background: #eff6ff; padding: 20px; margin: 20px 0; border-left: 4px solid #2563eb; }
+      </style>
+      </head><body>
+      <h1>${state.personalInfo.fullName}</h1>
+      <div class="contact">
+        ${state.personalInfo.email} | ${state.personalInfo.phone}<br>
+        ${state.personalInfo.address}, ${state.personalInfo.postcode}
       </div>
-      <h2>Employment History (Age 16 to Present)</h2>`;
-
-      employmentEntries.forEach(entry=>{
-        const typeLabel = entry.type!=='employment' ? `<span class="entry-type">${escapeHtml(entry.type.charAt(0).toUpperCase()+entry.type.slice(1))}</span>` : '';
-        content += `
-          <div class="entry">
-            <div class="entry-header">${escapeHtml(entry.title)} ${typeLabel}</div>
-            <div class="entry-meta">
-              <span class="entry-company">${escapeHtml(entry.company)}</span>${entry.location?`, ${escapeHtml(entry.location)}`:''}<br>
-              <span class="entry-dates">${escapeHtml(entry.startDate)} - ${entry.isCurrent?'Present':escapeHtml(entry.endDate)}</span>
+      <div class="certification">
+        <h3 style="margin:0 0 10px 0;color:#1e40af;">✓ Continuous Employment Certification</h3>
+        <p style="margin:0;color:#374151;">Complete continuous employment history with no gaps from age 16 to present</p>
+      </div>
+      <h2>Employment History</h2>
+      ${sorted.map(e=>{
+        const endDisplay=e.isCurrent ? 'Present' : e.endDate;
+        return `<div class="entry">
+          <div class="entry-header">
+            <div>
+              <div class="entry-title">${e.title}</div>
+              <div class="entry-company">${e.type.charAt(0).toUpperCase()+e.type.slice(1)}${e.company ? ' at '+e.company : ''}${e.location ? ' - '+e.location : ''}</div>
             </div>
-            ${entry.description?`<div class="description">${escapeHtml(entry.description)}</div>`:''}
-          </div>`;
-      });
-
-      if(educationEntries.length>0){
-        content += '<h2>Education</h2>';
-        educationEntries.forEach(entry=>{
-          content += `
-            <div class="entry">
-              <div class="entry-header">${escapeHtml(entry.title)}</div>
-              <div class="entry-meta">
-                <span class="entry-company">${escapeHtml(entry.company)}</span>${entry.location?`, ${escapeHtml(entry.location)}`:''}<br>
-                <span class="entry-dates">${escapeHtml(entry.startDate)} - ${entry.isCurrent?'Present':escapeHtml(entry.endDate)}</span>
-              </div>
-              ${entry.description?`<div class="description">${escapeHtml(entry.description)}</div>`:''}
-            </div>`;
-        });
-      }
-
-      const today=new Date().toLocaleDateString('en-GB',{year:'numeric',month:'long',day:'numeric'});
-      content += `
-        <div class="footer">
-          <p>Curriculum Vitae - Generated on ${today}</p>
-          <p>Complete continuous employment history with no gaps from age 16 to present</p>
-        </div>
+            <div class="entry-date">${e.startDate} → ${endDisplay}</div>
+          </div>
+          ${e.description ? `<div class="entry-description">${e.description}</div>` : ''}
+        </div>`;
+      }).join('')}
+      <div style="margin-top:50px;padding-top:20px;border-top:1px solid #e5e7eb;text-align:center;color:#9ca3af;font-size:12px;">
+        <p>Generated with Continuous Employment CV Builder</p>
+        <p>Complete continuous employment history with no gaps from age 16 to present</p>
       </div>
       <div class="no-print" style="position:fixed;top:20px;right:20px;background:white;padding:15px;border-radius:8px;box-shadow:0 4px 6px rgba(0,0,0,0.1);">
         <button onclick="window.print()" style="background:#2563eb;color:white;border:none;padding:12px 24px;border-radius:6px;cursor:pointer;font-size:16px;font-weight:bold;margin-bottom:10px;width:100%;">Save as PDF / Print</button>
@@ -744,6 +763,7 @@
     }
 
     // -------------------- Init --------------------
+    setupPersonalInfo();
     renderEntries();
     updateButtonStates();
   </script>
