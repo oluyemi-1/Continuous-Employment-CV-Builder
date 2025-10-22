@@ -15,6 +15,7 @@
             align-items: center;
             justify-content: center;
             z-index: 1000;
+            padding: 1rem;
         }
     </style>
 </head>
@@ -132,8 +133,6 @@
         </div>
     </div>
 
-    <!-- Modals will be inserted here by JavaScript -->
-
     <script>
         // Application State
         const state = {
@@ -160,6 +159,17 @@
         ];
 
         // Utility Functions
+        function escapeHtml(text) {
+            const map = {
+                '&': '&amp;',
+                '<': '&lt;',
+                '>': '&gt;',
+                '"': '&quot;',
+                "'": '&#039;'
+            };
+            return text ? String(text).replace(/[&<>"']/g, m => map[m]) : '';
+        }
+
         function calculateAge(dob) {
             if (!dob) return { age: '', age16Date: '' };
             const today = new Date();
@@ -311,12 +321,22 @@
             const educationEntries = state.entries.filter(e => e.type === 'education');
             
             // Render employment entries
-            employmentContainer.innerHTML = employmentEntries.map(entry => createEntryHTML(entry)).join('');
+            employmentContainer.innerHTML = '';
+            employmentEntries.forEach(entry => {
+                const entryElement = document.createElement('div');
+                entryElement.innerHTML = createEntryHTML(entry);
+                employmentContainer.appendChild(entryElement.firstElementChild);
+            });
             
             // Render education entries
             if (educationEntries.length > 0) {
                 educationSection.classList.remove('hidden');
-                educationContainer.innerHTML = educationEntries.map(entry => createEntryHTML(entry)).join('');
+                educationContainer.innerHTML = '';
+                educationEntries.forEach(entry => {
+                    const entryElement = document.createElement('div');
+                    entryElement.innerHTML = createEntryHTML(entry);
+                    educationContainer.appendChild(entryElement.firstElementChild);
+                });
             } else {
                 educationSection.classList.add('hidden');
             }
@@ -334,25 +354,37 @@
         function createEntryHTML(entry) {
             const allTypes = [...defaultTypes, ...state.customTypes];
             const typeOptions = entry.type === 'education' 
-                ? allTypes.map(t => `<option value="${t}" ${t === entry.type ? 'selected' : ''}>${t.charAt(0).toUpperCase() + t.slice(1)}</option>`).join('')
-                : allTypes.filter(t => t !== 'education').map(t => `<option value="${t}" ${t === entry.type ? 'selected' : ''}>${t.charAt(0).toUpperCase() + t.slice(1)}</option>`).join('');
+                ? allTypes.map(t => `<option value="${escapeHtml(t)}" ${t === entry.type ? 'selected' : ''}>${t.charAt(0).toUpperCase() + t.slice(1)}</option>`).join('')
+                : allTypes.filter(t => t !== 'education').map(t => `<option value="${escapeHtml(t)}" ${t === entry.type ? 'selected' : ''}>${t.charAt(0).toUpperCase() + t.slice(1)}</option>`).join('');
             
             const expectedDate = getNextExpectedDate();
             const showExpectedDate = expectedDate && entry.id === state.unsavedEntryId;
             
+            const deleteBtn = `
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <polyline points="3 6 5 6 21 6"></polyline>
+                    <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+                    <line x1="10" y1="11" x2="10" y2="17"></line>
+                    <line x1="14" y1="11" x2="14" y2="17"></line>
+                </svg>
+            `;
+            
+            const saveBtn = `
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path>
+                    <polyline points="17 21 17 13 7 13 7 21"></polyline>
+                    <polyline points="7 3 7 8 15 8"></polyline>
+                </svg>
+            `;
+            
             return `
                 <div class="mb-6 p-6 rounded-lg border-2 ${entry.isNew ? 'bg-yellow-50 border-yellow-300' : 'bg-gray-50 border-gray-200'}">
                     <div class="flex justify-between items-start mb-4">
-                        <select onchange="updateEntryField(${entry.id}, 'type', this.value)" class="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 capitalize">
+                        <select data-entry-id="${entry.id}" data-field="type" class="entry-field px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 capitalize">
                             ${typeOptions}
                         </select>
                         <button onclick="deleteEntry(${entry.id})" class="text-red-600 hover:text-red-800">
-                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                                <polyline points="3 6 5 6 21 6"></polyline>
-                                <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
-                                <line x1="10" y1="11" x2="10" y2="17"></line>
-                                <line x1="14" y1="11" x2="14" y2="17"></line>
-                            </svg>
+                            ${deleteBtn}
                         </button>
                     </div>
 
@@ -368,37 +400,33 @@
                     ` : ''}
 
                     <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
-                        <input type="text" placeholder="${entry.type === 'education' ? 'Course / Qualification' : 'Job Title / Activity'} *" value="${entry.title}" oninput="updateEntryField(${entry.id}, 'title', this.value)" class="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500">
-                        <input type="text" placeholder="${entry.type === 'education' ? 'Institution' : 'Company / Institution'} *" value="${entry.company}" oninput="updateEntryField(${entry.id}, 'company', this.value)" class="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500">
-                        <input type="text" placeholder="Location" value="${entry.location}" oninput="updateEntryField(${entry.id}, 'location', this.value)" class="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500">
+                        <input type="text" data-entry-id="${entry.id}" data-field="title" class="entry-field" placeholder="${entry.type === 'education' ? 'Course / Qualification' : 'Job Title / Activity'} *" value="${escapeHtml(entry.title)}" class="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500">
+                        <input type="text" data-entry-id="${entry.id}" data-field="company" class="entry-field" placeholder="${entry.type === 'education' ? 'Institution' : 'Company / Institution'} *" value="${escapeHtml(entry.company)}" class="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500">
+                        <input type="text" data-entry-id="${entry.id}" data-field="location" class="entry-field" placeholder="Location" value="${escapeHtml(entry.location)}" class="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500">
                     </div>
 
                     <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
                         <div>
                             <label class="block text-sm text-gray-700 mb-1">Start Date *</label>
-                            <input type="date" value="${entry.startDate}" onchange="updateEntryField(${entry.id}, 'startDate', this.value)" class="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 w-full">
+                            <input type="date" data-entry-id="${entry.id}" data-field="startDate" class="entry-field px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 w-full" value="${entry.startDate}">
                         </div>
                         <div>
                             <label class="block text-sm text-gray-700 mb-1">End Date *</label>
                             <div class="flex items-center gap-2">
-                                <input type="date" value="${entry.endDate}" onchange="updateEntryField(${entry.id}, 'endDate', this.value)" ${entry.isCurrent ? 'disabled' : ''} class="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 flex-1 ${entry.isCurrent ? 'bg-gray-100' : ''}">
+                                <input type="date" data-entry-id="${entry.id}" data-field="endDate" class="entry-field px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 flex-1" value="${entry.endDate}" ${entry.isCurrent ? 'disabled' : ''}>
                                 <label class="flex items-center gap-2 text-sm">
-                                    <input type="checkbox" ${entry.isCurrent ? 'checked' : ''} onchange="updateEntryField(${entry.id}, 'isCurrent', this.checked)" class="w-4 h-4">
+                                    <input type="checkbox" data-entry-id="${entry.id}" data-field="isCurrent" class="entry-checkbox w-4 h-4" ${entry.isCurrent ? 'checked' : ''}>
                                     Current
                                 </label>
                             </div>
                         </div>
                     </div>
 
-                    <textarea placeholder="${entry.type === 'education' ? 'Description of course, achievements, grades...' : 'Description of responsibilities, achievements, or activities...'} *" oninput="updateEntryField(${entry.id}, 'description', this.value)" rows="3" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 mb-4">${entry.description}</textarea>
+                    <textarea data-entry-id="${entry.id}" data-field="description" class="entry-field w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 mb-4" placeholder="${entry.type === 'education' ? 'Description of course, achievements, grades...' : 'Description of responsibilities, achievements, or activities...'} *" rows="3">${escapeHtml(entry.description)}</textarea>
 
                     ${entry.isNew ? `
                         <button onclick="saveEntry(${entry.id})" class="w-full flex items-center justify-center gap-2 bg-green-600 text-white px-4 py-3 rounded-lg hover:bg-green-700 transition font-semibold">
-                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                                <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path>
-                                <polyline points="17 21 17 13 7 13 7 21"></polyline>
-                                <polyline points="7 3 7 8 15 8"></polyline>
-                            </svg>
+                            ${saveBtn}
                             Save Entry
                         </button>
                     ` : ''}
@@ -406,7 +434,31 @@
             `;
         }
 
-        // Event Handlers
+        // Event Handlers using Event Delegation
+        document.addEventListener('input', function(e) {
+            if (e.target.classList.contains('entry-field')) {
+                const entryId = parseInt(e.target.dataset.entryId);
+                const field = e.target.dataset.field;
+                const value = e.target.value;
+                updateEntryField(entryId, field, value);
+            }
+        });
+
+        document.addEventListener('change', function(e) {
+            if (e.target.classList.contains('entry-field')) {
+                const entryId = parseInt(e.target.dataset.entryId);
+                const field = e.target.dataset.field;
+                const value = e.target.value;
+                updateEntryField(entryId, field, value);
+            }
+            if (e.target.classList.contains('entry-checkbox')) {
+                const entryId = parseInt(e.target.dataset.entryId);
+                const field = e.target.dataset.field;
+                const value = e.target.checked;
+                updateEntryField(entryId, field, value);
+            }
+        });
+
         function addEntry() {
             if (state.unsavedEntryId) {
                 alert('Please save your current entry first');
@@ -441,11 +493,10 @@
             if (field === 'isCurrent') {
                 entry.isCurrent = value;
                 if (value) entry.endDate = '';
+                renderEntries(); // Re-render to update the disabled state
             } else {
                 entry[field] = value;
             }
-            
-            renderEntries();
         }
 
         function saveEntry(id) {
@@ -489,23 +540,15 @@
             const shareBtn = document.getElementById('shareBtn');
             
             if (state.unsavedEntryId) {
-                addBtn.disabled = true;
-                customBtn.disabled = true;
-                downloadBtn.disabled = true;
-                shareBtn.disabled = true;
-                addBtn.classList.add('opacity-50', 'cursor-not-allowed');
-                customBtn.classList.add('opacity-50', 'cursor-not-allowed');
-                downloadBtn.classList.add('opacity-50', 'cursor-not-allowed');
-                shareBtn.classList.add('opacity-50', 'cursor-not-allowed');
+                [addBtn, customBtn, downloadBtn, shareBtn].forEach(btn => {
+                    btn.disabled = true;
+                    btn.classList.add('opacity-50', 'cursor-not-allowed');
+                });
             } else {
-                addBtn.disabled = false;
-                customBtn.disabled = false;
-                downloadBtn.disabled = false;
-                shareBtn.disabled = false;
-                addBtn.classList.remove('opacity-50', 'cursor-not-allowed');
-                customBtn.classList.remove('opacity-50', 'cursor-not-allowed');
-                downloadBtn.classList.remove('opacity-50', 'cursor-not-allowed');
-                shareBtn.classList.remove('opacity-50', 'cursor-not-allowed');
+                [addBtn, customBtn, downloadBtn, shareBtn].forEach(btn => {
+                    btn.disabled = false;
+                    btn.classList.remove('opacity-50', 'cursor-not-allowed');
+                });
             }
         }
 
@@ -532,7 +575,7 @@
         document.getElementById('postcode').addEventListener('input', (e) => state.personalInfo.postcode = e.target.value);
 
         document.getElementById('addEntryBtn').addEventListener('click', addEntry);
-        document.getElementById('checkGapsBtn').addEventListener('click', checkForGaps);
+document.getElementById('checkGapsBtn').addEventListener('click', checkForGaps);
 
         document.getElementById('downloadBtn').addEventListener('click', function() {
             if (state.unsavedEntryId) {
@@ -564,12 +607,12 @@
               <html>
                 <head>
                   <meta charset="UTF-8">
-                  <title>${state.personalInfo.fullName} - CV</title>
+                  <title>${escapeHtml(state.personalInfo.fullName)} - CV</title>
                   <style>
                     @page { size: A4; margin: 20mm; }
                     * { margin: 0; padding: 0; box-sizing: border-box; }
                     body {
-font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+                      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
                       line-height: 1.6;
                       color: #333;
                       background: white;
@@ -651,13 +694,13 @@ font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
                 </head>
                 <body>
                   <div class="container">
-                    <h1>${state.personalInfo.fullName}</h1>
+                    <h1>${escapeHtml(state.personalInfo.fullName)}</h1>
                     <div class="personal-info">
-                      <p><strong>Email:</strong> ${state.personalInfo.email}</p>
-                      <p><strong>Phone:</strong> ${state.personalInfo.phone}</p>
-                      <p><strong>Address:</strong> ${state.personalInfo.address}</p>
-                      <p><strong>Postcode:</strong> ${state.personalInfo.postcode}</p>
-                      <p><strong>Date of Birth:</strong> ${state.personalInfo.dateOfBirth} (Age: ${state.personalInfo.currentAge})</p>
+                      <p><strong>Email:</strong> ${escapeHtml(state.personalInfo.email)}</p>
+                      <p><strong>Phone:</strong> ${escapeHtml(state.personalInfo.phone)}</p>
+                      <p><strong>Address:</strong> ${escapeHtml(state.personalInfo.address)}</p>
+                      <p><strong>Postcode:</strong> ${escapeHtml(state.personalInfo.postcode)}</p>
+                      <p><strong>Date of Birth:</strong> ${escapeHtml(state.personalInfo.dateOfBirth)} (Age: ${escapeHtml(state.personalInfo.currentAge)})</p>
                     </div>
                     
                     <h2>Employment History (Age 16 to Present)</h2>
@@ -665,17 +708,17 @@ font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
 
             employmentEntries.forEach(entry => {
                 const typeLabel = entry.type !== 'employment' 
-                    ? `<span class="entry-type">${entry.type.charAt(0).toUpperCase() + entry.type.slice(1)}</span>`
+                    ? `<span class="entry-type">${escapeHtml(entry.type.charAt(0).toUpperCase() + entry.type.slice(1))}</span>`
                     : '';
                 
                 content += `
                     <div class="entry">
-                      <div class="entry-header">${entry.title} ${typeLabel}</div>
+                      <div class="entry-header">${escapeHtml(entry.title)} ${typeLabel}</div>
                       <div class="entry-meta">
-                        <span class="entry-company">${entry.company}</span>${entry.location ? `, ${entry.location}` : ''}<br>
-                        <span class="entry-dates">${entry.startDate} - ${entry.isCurrent ? 'Present' : entry.endDate}</span>
+                        <span class="entry-company">${escapeHtml(entry.company)}</span>${entry.location ? `, ${escapeHtml(entry.location)}` : ''}<br>
+                        <span class="entry-dates">${escapeHtml(entry.startDate)} - ${entry.isCurrent ? 'Present' : escapeHtml(entry.endDate)}</span>
                       </div>
-                      ${entry.description ? `<div class="description">${entry.description}</div>` : ''}
+                      ${entry.description ? `<div class="description">${escapeHtml(entry.description)}</div>` : ''}
                     </div>
                 `;
             });
@@ -685,12 +728,12 @@ font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
                 educationEntries.forEach(entry => {
                     content += `
                         <div class="entry">
-                          <div class="entry-header">${entry.title}</div>
+                          <div class="entry-header">${escapeHtml(entry.title)}</div>
                           <div class="entry-meta">
-                            <span class="entry-company">${entry.company}</span>${entry.location ? `, ${entry.location}` : ''}<br>
-                            <span class="entry-dates">${entry.startDate} - ${entry.isCurrent ? 'Present' : entry.endDate}</span>
+                            <span class="entry-company">${escapeHtml(entry.company)}</span>${entry.location ? `, ${escapeHtml(entry.location)}` : ''}<br>
+                            <span class="entry-dates">${escapeHtml(entry.startDate)} - ${entry.isCurrent ? 'Present' : escapeHtml(entry.endDate)}</span>
                           </div>
-                          ${entry.description ? `<div class="description">${entry.description}</div>` : ''}
+                          ${entry.description ? `<div class="description">${escapeHtml(entry.description)}</div>` : ''}
                         </div>
                     `;
                 });
@@ -739,7 +782,6 @@ font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
                 return;
             }
 
-            // Create share modal
             const modal = document.createElement('div');
             modal.className = 'modal-backdrop';
             modal.innerHTML = `
@@ -752,7 +794,7 @@ font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
                         <a href="mailto:?subject=${encodeURIComponent(state.personalInfo.fullName + ' - CV')}&body=${encodeURIComponent('Please find my CV at: ' + window.location.href)}" class="block bg-blue-600 text-white text-center py-3 px-4 rounded-lg font-semibold hover:bg-blue-700 transition">
                             ✉️ Share via Email
                         </a>
-                        <button onclick="this.parentElement.parentElement.parentElement.remove()" class="bg-gray-400 text-white py-3 px-4 rounded-lg font-semibold hover:bg-gray-500 transition">
+                        <button class="bg-gray-400 text-white py-3 px-4 rounded-lg font-semibold hover:bg-gray-500 transition" onclick="this.parentElement.parentElement.parentElement.remove()">
                             Close
                         </button>
                     </div>
@@ -782,10 +824,10 @@ font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
                     <h3 class="text-lg font-bold text-blue-900 mb-4">Add Custom Entry Type</h3>
                     <input type="text" id="customTypeInput" placeholder="e.g., Career Break, Internship, etc." class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 mb-4">
                     <div class="flex gap-3">
-                        <button onclick="addCustomType()" class="flex-1 bg-purple-600 text-white px-4 py-2 rounded-lg hover:bg-purple-700 transition font-semibold">
+                        <button class="flex-1 bg-purple-600 text-white px-4 py-2 rounded-lg hover:bg-purple-700 transition font-semibold" onclick="addCustomType()">
                             Add Type
                         </button>
-                        <button onclick="this.parentElement.parentElement.parentElement.remove()" class="flex-1 bg-gray-400 text-white px-4 py-2 rounded-lg hover:bg-gray-500 transition font-semibold">
+                        <button class="flex-1 bg-gray-400 text-white px-4 py-2 rounded-lg hover:bg-gray-500 transition font-semibold" onclick="this.parentElement.parentElement.parentElement.remove()">
                             Cancel
                         </button>
                     </div>
@@ -869,10 +911,10 @@ font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
                         </p>
                     </div>
                     <div class="flex gap-3">
-                        <button onclick="applyGapSuggestion(${JSON.stringify(gap).replace(/"/g, '&quot;')}, ${JSON.stringify(suggestion).replace(/"/g, '&quot;')})" class="flex-1 bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700 transition font-semibold">
+                        <button class="flex-1 bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700 transition font-semibold" onclick='applyGapSuggestion(${JSON.stringify(gap)}, ${JSON.stringify(suggestion)})'>
                             Apply Suggestion
                         </button>
-                        <button onclick="this.parentElement.parentElement.parentElement.remove()" class="flex-1 bg-gray-400 text-white px-4 py-2 rounded-lg hover:bg-gray-500 transition font-semibold">
+                        <button class="flex-1 bg-gray-400 text-white px-4 py-2 rounded-lg hover:bg-gray-500 transition font-semibold" onclick="this.parentElement.parentElement.parentElement.remove()">
                             Cancel
                         </button>
                     </div>
