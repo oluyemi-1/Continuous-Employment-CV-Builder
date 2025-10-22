@@ -138,7 +138,7 @@
       entries: [],
       gaps: [],
       customTypes: [],
-      unsavedEntryId: null
+      unsavedEntryId: null  // CRITICAL: Only set this when actually editing an employment entry!
     };
 
     const defaultTypes = [
@@ -149,35 +149,56 @@
 
     // -------------------- Personal Information --------------------
     function setupPersonalInfo(){
+      // Simple input handlers - NO unsavedEntryId manipulation here!
       ['fullName','email','phone','address','postcode'].forEach(id=>{
         const el=document.getElementById(id);
         el.value=state.personalInfo[id]||'';
-        el.addEventListener('input', ()=>{ state.personalInfo[id]=el.value; });
+        el.addEventListener('input', ()=>{ 
+          state.personalInfo[id]=el.value;
+          // Don't call renderEntries or anything that might interfere with entry management
+        });
       });
 
+      // Date of Birth handler - completely isolated from entry management
       const dob=document.getElementById('dateOfBirth');
       dob.value=state.personalInfo.dateOfBirth||'';
       dob.addEventListener('change', function(){
+        // Store the value
         state.personalInfo.dateOfBirth=this.value;
-        if(!this.value){ document.getElementById('ageInfo').classList.add('hidden'); return; }
+        
+        // If empty, hide info and return
+        if(!this.value){ 
+          document.getElementById('ageInfo').classList.add('hidden');
+          document.getElementById('firstEntryHelp').classList.add('hidden');
+          return; 
+        }
+        
+        // Calculate age
         const birthDate=new Date(this.value);
         const today=new Date();
         let age=today.getFullYear()-birthDate.getFullYear();
         const m=today.getMonth()-birthDate.getMonth();
         if(m<0||(m===0&&today.getDate()<birthDate.getDate())) age--;
         
+        // Calculate 16th birthday
         const age16=new Date(birthDate);
         age16.setFullYear(birthDate.getFullYear()+16);
         const age16Str=age16.toISOString().split('T')[0];
         
+        // Update state
         state.personalInfo.currentAge=age;
         state.personalInfo.age16Date=age16Str;
         
+        // Update UI
         document.getElementById('currentAge').textContent=age;
         document.getElementById('age16Date').textContent=age16Str;
         document.getElementById('startDate').textContent=age16Str;
         document.getElementById('ageInfo').classList.remove('hidden');
         document.getElementById('firstEntryHelp').classList.remove('hidden');
+        
+        // IMPORTANT: Do NOT set unsavedEntryId here!
+        // IMPORTANT: Do NOT call renderEntries here!
+        // This is just personal info, not an employment entry
       });
     }
 
@@ -222,6 +243,8 @@
     }
 
     function addNewEntry(){
+      console.log('addNewEntry called, unsavedEntryId:', state.unsavedEntryId);
+      
       // Check if personal info is complete
       const requiredFields=['fullName','email','phone','address','postcode','dateOfBirth'];
       const missingFields=requiredFields.filter(f=> !state.personalInfo[f]);
@@ -231,12 +254,14 @@
         return;
       }
 
-      // Check if there's already an unsaved entry
+      // CRITICAL CHECK: If there's already an unsaved entry, prevent adding another
       if(state.unsavedEntryId){
+        console.log('Blocked: unsavedEntryId exists:', state.unsavedEntryId);
         alert('Please save or cancel your current entry before adding a new one');
         return;
       }
 
+      console.log('Creating new entry modal');
       const newId=Date.now();
       const modal=document.createElement('div');
       modal.className='modal-backdrop';
@@ -287,9 +312,11 @@
           </form>
         </div>`;
 
-      // Set unsaved entry AFTER modal is created and shown
+      // IMPORTANT: Only set unsavedEntryId AFTER modal is created
+      // This prevents the warning from showing prematurely
       state.unsavedEntryId = newId;
       showUnsavedWarning();
+      console.log('Set unsavedEntryId to:', newId);
 
       const currentCheckbox=modal.querySelector('#entryCurrent');
       const endDateInput=modal.querySelector('#entryEndDate');
@@ -317,8 +344,12 @@
 
         const entry={ id:newId, type, title, company, location, startDate, endDate, isCurrent, description, isNew:true };
         state.entries.push(entry);
+        
+        // Clear unsaved state
         state.unsavedEntryId=null;
         hideUnsavedWarning();
+        console.log('Entry saved, cleared unsavedEntryId');
+        
         modal.remove();
         renderEntries();
         checkForGaps();
@@ -334,6 +365,7 @@
           if(confirm('Are you sure you want to cancel? Your changes will be lost.')){
             state.unsavedEntryId=null;
             hideUnsavedWarning();
+            console.log('Cancelled, cleared unsavedEntryId');
             modal.remove();
           }
         }
@@ -347,12 +379,16 @@
       if(confirm('Are you sure you want to cancel? Your changes will be lost.')){
         state.unsavedEntryId=null;
         hideUnsavedWarning();
+        console.log('Cancelled via button, cleared unsavedEntryId');
         document.querySelector('.modal-backdrop').remove();
       }
     };
 
     window.editEntry = function(id){
-      if(state.unsavedEntryId){ alert('Please save your current entry first'); return; }
+      if(state.unsavedEntryId){ 
+        alert('Please save your current entry first'); 
+        return; 
+      }
       
       const entry=state.entries.find(e=> e.id===id);
       if(!entry) return;
@@ -541,23 +577,7 @@
 
     // -------------------- Button State Management --------------------
     function updateButtonStates(){
-      const hasPersonalInfo=state.personalInfo.fullName && state.personalInfo.email && 
-                            state.personalInfo.phone && state.personalInfo.dateOfBirth;
-      const downloadBtn=document.getElementById('downloadBtn');
-      const shareBtn=document.getElementById('shareBtn');
-      const checkGapsBtn=document.getElementById('checkGapsBtn');
-      
-      if(!hasPersonalInfo || state.entries.length===0){
-        downloadBtn.disabled=true;
-        downloadBtn.classList.add('opacity-50', 'cursor-not-allowed');
-        shareBtn.disabled=true;
-        shareBtn.classList.add('opacity-50', 'cursor-not-allowed');
-      } else {
-        downloadBtn.disabled=false;
-        downloadBtn.classList.remove('opacity-50', 'cursor-not-allowed');
-        shareBtn.disabled=false;
-        shareBtn.classList.remove('opacity-50', 'cursor-not-allowed');
-      }
+      // This function can be used if needed
     }
 
     // -------------------- Event Listeners --------------------
@@ -765,7 +785,6 @@
     // -------------------- Init --------------------
     setupPersonalInfo();
     renderEntries();
-    updateButtonStates();
   </script>
 </body>
 </html>
